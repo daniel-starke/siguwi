@@ -2,14 +2,12 @@
  * @file resource.rc
  * @author Daniel Starke
  * @date 2025-06-14
- * @version 2025-06-21
+ * @version 2025-09-13
  */
 #include "resource.h"
 
 
-1 RT_MANIFEST "siguwi.exe.manifest"
-
-2 VERSIONINFO
+1 VERSIONINFO
 	FILEVERSION SIGUWI_VERSION_NUMS
 	PRODUCTVERSION SIGUWI_VERSION_NUMS
 	FILEFLAGSMASK 0x3fL
@@ -41,5 +39,7 @@ BEGIN
 		VALUE "Translation", 0x409, 1200
 	END
 END
+
+2 RT_MANIFEST "siguwi.exe.manifest"
 
 IDI_APP_ICON ICON DISCARDABLE "../res/icon.ico"
