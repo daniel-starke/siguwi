@@ -10,7 +10,7 @@
 
 /**
  * Parses a byte of a UTF-8 byte stream. Returns a code point if found.
- * 
+ *
  * @param[in,out] ctx - parser context
  * @param[in] b - input byte
  * @return `UTF8_MORE` if more data is needed, otherwise the parsed code point

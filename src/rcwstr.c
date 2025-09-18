@@ -11,7 +11,7 @@
 
 /**
  * Creates a new reference counted wide-character string.
- * 
+ *
  * @param[in] str - string to duplicate (can be `NULL`)
  * @return allocated object or `NULL` on allocation error
  */
@@ -33,7 +33,7 @@ tRcWStr * rws_create(const wchar_t * str) {
 
 /**
  * Increases the reference counter of the given object.
- * 
+ *
  * @param[in,out] s - reference counted wide-character string
  * @return `s`
  */
@@ -50,7 +50,7 @@ tRcWStr * rws_aquire(tRcWStr * s) {
  * Decreases the reference counter of the given object.
  * Frees the object if the reference counter reaches zero.
  * This sets the given object pointer to `NULL`.
- * 
+ *
  * @param[in,out] s - pointer reference counted wide-character string
  */
 void rws_release(tRcWStr ** s) {

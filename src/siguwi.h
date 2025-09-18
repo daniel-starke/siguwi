@@ -2,7 +2,7 @@
  * @file siguwi.h
  * @author Daniel Starke
  * @date 2025-06-14
- * @version 2025-09-13
+ * @version 2025-09-18
  */
 #ifndef __SIGUWI_H__
 #define __SIGUWI_H__
@@ -20,8 +20,9 @@
 #include <windowsx.h>
 #include <commctrl.h>
 #include <ntsecapi.h>
-#include <objbase.h> 
+#include <objbase.h>
 #include <psapi.h>
+#include <shellapi.h>
 #include <shlobj.h>
 #include <shlwapi.h>
 #include <wincred.h>
@@ -47,7 +48,7 @@ extern int __wgetmainargs(int *, wchar_t ***, wchar_t ***, int, int *);
 
 /**
  * Returns the number of array elements for compile time known size arrays.
- * 
+ *
  * @param[in] x - array to count
  * @return number of array elements
  */
@@ -75,7 +76,7 @@ extern int __wgetmainargs(int *, wchar_t ***, wchar_t ***, int, int *);
 
 /**
  * Maximum number of inter-process communication clients.
- * 
+ *
  * @remarks Only tested with `1`.
  */
 #define IPC_MAX_CLIENTS 1
@@ -123,7 +124,7 @@ extern int __wgetmainargs(int *, wchar_t ***, wchar_t ***, int, int *);
 
 /**
  * Returns the container base point of the given member pointer.
- * 
+ *
  * @param[in] ptr - member pointer
  * @param[in] type - container type
  * @param[in] member - member field
@@ -157,11 +158,11 @@ typedef enum {
 	ERR_OPT_AMB_C,
 	ERR_OPT_AMB_S,
 	ERR_OPT_AMB_X,
-	ERR_OPT_NO_CONFIG,
 	ERR_PRINTF_FMT,
 	ERR_CREATEFONT,
 	ERR_NO_SMARTCARD,
 	ERR_GET_STATUS,
+	ERR_GET_CSP,
 	ERR_CREATE_FILE,
 	ERR_READ_FILE,
 	ERR_GET_EXE_PATH,
@@ -234,6 +235,7 @@ typedef enum {
  * Single certificate configuration.
  */
 typedef struct {
+	wchar_t * certProv; /**< dynamically set from `cardName` via `getCspFromCardNameW()` */
 	wchar_t * certId;
 	wchar_t * certName;
 	wchar_t * certSubj;
@@ -260,6 +262,7 @@ typedef struct {
  * Single INI file configuration part related to a certificate.
  */
 typedef struct {
+	wchar_t * certProv; /**< dynamically set from `cardName` via `getCspFromCardNameW()` */
 	wchar_t * certId;
 	wchar_t * cardName;
 	wchar_t * cardReader;
@@ -350,6 +353,8 @@ typedef struct {
 	float sepPos;
 	bool sepActive;
 	int selList;
+	tRcIniConfigBase * cmdlCfg; /**< parsed INI file content passed on command-line */
+	tRcWStr * cmdlSignApp; /**< signing application command-line from command-line INI file */
 } tIpcWndCtx;
 
 
@@ -416,6 +421,7 @@ bool fillCertInfo(tConfig * c, HCRYPTKEY hKey);
 bool fillContainerInfo(tConfig * c);
 void configAdd(tVector * v, tConfig * c);
 wchar_t * getCardNameW(SCARDCONTEXT hContext, LPCBYTE atr, const CHAR * ref);
+wchar_t * getCspFromCardNameW(const wchar_t * cardName);
 tVector * configsGet(void);
 int comboConfigIdAdd(const size_t index, tConfig * data, HWND * hCombo);
 int configPrint(const size_t index, tConfig * data, tUStrBuf * sb);
@@ -427,7 +433,7 @@ LRESULT CALLBACK configsWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 /* INI configuration utility functions (`siguwi-ini.c`) */
 bool iniConfigParse(const wchar_t * file, const wchar_t * section, tIniConfig * c, tFilePos * p);
 bool iniConfigGetCardStatus(const tIniConfigBase * c, DWORD * cardStatus);
-bool iniConfigValidatePin(const wchar_t * certId, const wchar_t * pin, DWORD len);
+bool iniConfigValidatePin(const wchar_t * certProv, const wchar_t * certId, const wchar_t * pin, DWORD len);
 bool iniConfigGetPin(const tIniConfigBase * c, HWND parent, DATA_BLOB * pin);
 tRcIniConfigBase * rcIniConfigBaseCreate(const tIniConfigBase * c);
 tRcIniConfigBase * rcIniConfigBaseClone(tRcIniConfigBase * c);
@@ -457,6 +463,7 @@ void CALLBACK processHandleReadComplete(DWORD dwErrorCode, DWORD dwNumberOfBytes
 bool processFinish(tIpcWndCtx * ctx);
 bool processAddFile(tIpcWndCtx * ctx, tRcIniConfigBase * c, tRcWStr * signApp, const wchar_t * path);
 bool processAddItem(const tIpcWndCtx * ctx, const tProcCtx * item);
+void processDragFile(tIpcWndCtx * ctx, HDROP hDrop, UINT i, wchar_t * buf, size_t len);
 bool processUpdateItem(const tIpcWndCtx * ctx, const size_t i);
 void processWndResize(const tIpcWndCtx * ctx);
 LRESULT CALLBACK processSepWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);

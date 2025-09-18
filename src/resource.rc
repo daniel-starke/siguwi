@@ -2,11 +2,13 @@
  * @file resource.rc
  * @author Daniel Starke
  * @date 2025-06-14
- * @version 2025-09-13
+ * @version 2025-09-16
  */
 #include "resource.h"
 
 
+// always ID 1
+// see https://learn.microsoft.com/en-us/windows/win32/menurc/versioninfo-resource
 1 VERSIONINFO
 	FILEVERSION SIGUWI_VERSION_NUMS
 	PRODUCTVERSION SIGUWI_VERSION_NUMS
@@ -40,6 +42,8 @@ BEGIN
 	END
 END
 
-2 RT_MANIFEST "siguwi.exe.manifest"
+// always ID 1 for exe files
+// see https://learn.microsoft.com/en-us/cpp/build/reference/manifest-create-side-by-side-assembly-manifest?view=msvc-170
+1 RT_MANIFEST "siguwi.exe.manifest"
 
 IDI_APP_ICON ICON DISCARDABLE "../res/icon.ico"

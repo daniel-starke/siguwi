@@ -2,7 +2,7 @@
  * @file siguwi-main.c
  * @author Daniel Starke
  * @date 2025-06-14
- * @version 2025-09-13
+ * @version 2025-09-17
  */
 #include "siguwi.h"
 
@@ -49,6 +49,7 @@ const wchar_t * const errStr[] = {
 	/* ERR_CREATEFONT */       L"CreateFont failed.",
 	/* ERR_NO_SMARTCARD */     L"No SmartCard was found.",
 	/* ERR_GET_STATUS */       L"Failed to get SmartCard status.",
+	/* ERR_GET_CSP */          L"Failed to get the CSP name from SmartCard name.",
 	/* ERR_CREATE_FILE */      L"Failed to create file.",
 	/* ERR_READ_FILE */        L"Failed to read file.",
 	/* ERR_GET_EXE_PATH */     L"Failed to retrieve own executable path.",
@@ -68,7 +69,7 @@ const wchar_t * const errStr[] = {
 
 
 /**
- * Maps process states to strings. 
+ * Maps process states to strings.
  */
 wchar_t * const procStateStr[] = {
 	/* PST_IDLE */              L"pending",
@@ -319,9 +320,16 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE hInstPrev, LPWSTR cmdline, int 
 			goto onError;
 		}
 	}
+	/* deduce cryptographic service provider */
+	config.cert->certProv = getCspFromCardNameW(config.cert->cardName);
+	if (config.cert->certProv == NULL) {
+		MessageBoxW(NULL, errStr[ERR_GET_CSP], L"Error (showProcess)", MB_OK | MB_ICONERROR);
+		goto onError;
+	}
 	/* process given file list */
 	res = showProcess(&config, cmdshow, argc - optind, argv + optind);
 onError:
+	wStrDelete(&(config.cert->certProv));
 	wStrDelete(&(config.cert->certId));
 	wStrDelete(&(config.cert->cardName));
 	wStrDelete(&(config.cert->cardReader));
@@ -359,7 +367,7 @@ wchar_t * wFromStr(const char * str) {
 
 /**
  * Returns the UTF-8 string from the given wide-character string.
- * 
+ *
  * @param[in] str - wide-character string
  * @return UTF-8 string
  */
@@ -393,7 +401,7 @@ onError:
 
 /**
  * Removes carrier-returns in the given string in-place.
- * 
+ *
  * @param[in,out] str - wide-character string
  */
 void wRemoveCr(wchar_t * str) {
@@ -413,7 +421,7 @@ void wRemoveCr(wchar_t * str) {
 /**
  * Returns the file name part of the path. The returned value point into the
  * given path string.
- * 
+ *
  * @param[in] path - input path
  * @return file name part including file extension
  */
@@ -437,7 +445,7 @@ wchar_t * wFileName(wchar_t * path) {
 
 /**
  * Converts all slashes to backslashes in the given path.
- * 
+ *
  * @param[in,out] path - pointer to path string
  */
 void wToBackslash(wchar_t * path) {
@@ -455,7 +463,7 @@ void wToBackslash(wchar_t * path) {
 
 /**
  * Replaces the given path string with an absolute path if possible.
- * 
+ *
  * @param[in,out] path - pointer to path string
  * @param[in] freeOld - `true` to free old path before setting it, else `false`
  * @return `true` on success, else `false`
@@ -504,7 +512,7 @@ bool wToFullPath(wchar_t ** path, const bool freeOld) {
 
 /**
  * Checks if the given path is an existing file.
- * 
+ *
  * @param[in] path - path to check
  * @return `true` if existing file path, else `false`
  */
@@ -582,7 +590,7 @@ wchar_t * siguwi_wcsdup(const wchar_t * str) {
 /**
  * Hashes the given data with the passed seed.
  * The updated seed is returned.
- * 
+ *
  * @param[in] seed - seed to update
  * @param[in] data - data pointer
  * @param[in] len - bytes to hash
@@ -702,7 +710,7 @@ void showFmtMsgVar(HWND parent, UINT type, const wchar_t * title, const wchar_t 
 
 /**
  * Closes the given handle and resets the variable to `r`.
- * 
+ *
  * @param[in,out] h - pointer to Windows handle
  * @param[in] r - HANDLE value in unset state to reset to
  */

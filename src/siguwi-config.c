@@ -2,7 +2,7 @@
  * @file siguwi-config.c
  * @author Daniel Starke
  * @date 2025-06-25
- * @version 2025-08-05
+ * @version 2025-09-17
  */
 #include "siguwi.h"
 
@@ -44,9 +44,10 @@ bool fillCertInfo(tConfig * c, HCRYPTKEY hKey) {
 	if (nameLen > 1 && subjLen > 1) {
 		wStrDelete(&(c->certName));
 		wStrDelete(&(c->certSubj));
+		c->certProv = getCspFromCardNameW(name);
 		c->certName = wcsdup(name);
 		c->certSubj = wcsdup(subj);
-		return c->certName != NULL && c->certSubj != NULL;
+		return c->certProv != NULL && c->certName != NULL && c->certSubj != NULL;
 	}
 	return false;
 }
@@ -59,12 +60,12 @@ bool fillCertInfo(tConfig * c, HCRYPTKEY hKey) {
  * @return `true` on success, else `false`
  */
 bool fillContainerInfo(tConfig * c) {
-	if (c->certId == NULL) {
+	if (c->certId == NULL || c->certProv == NULL) {
 		return false;
 	}
 	HCRYPTPROV hProv = 0;
 	bool res = false;
-	if ( CryptAcquireContextW(&hProv, c->certId, PROVIDER_NAME, PROV_TYPE, CRYPT_SILENT | CRYPT_VERIFYCONTEXT) ) {
+	if ( CryptAcquireContextW(&hProv, c->certId, c->certProv, PROV_TYPE, CRYPT_SILENT | CRYPT_VERIFYCONTEXT) ) {
 		HCRYPTKEY hKey = 0;
 		if ( CryptGetUserKey(hProv, AT_SIGNATURE, &hKey) ) {
 			res = res || fillCertInfo(c, hKey);
@@ -92,12 +93,13 @@ void configAdd(tVector * v, tConfig * c) {
 	}
 	tConfig newC;
 	ZeroMemory(&newC, sizeof(newC));
+	newC.certProv = wcsdup(c->certProv);
 	newC.certId = wcsdup(c->certId);
 	newC.certName = wcsdup(c->certName);
 	newC.certSubj = wcsdup(c->certSubj);
 	newC.cardName = wcsdup(c->cardName);
 	newC.cardReader = wcsdup(c->cardReader);
-	if (newC.certId != NULL && newC.certName != NULL && newC.certSubj != NULL && newC.cardName != NULL && newC.cardReader != NULL) {
+	if (newC.certProv != NULL && newC.certId != NULL && newC.certName != NULL && newC.certSubj != NULL && newC.cardName != NULL && newC.cardReader != NULL) {
 		tConfig * pushedC = (tConfig *)vec_pushBack(v);
 		if (pushedC != NULL) {
 			*pushedC = newC;
@@ -151,6 +153,39 @@ wchar_t * getCardNameW(SCARDCONTEXT hContext, LPCBYTE atr, const CHAR * ref) {
 	wchar_t * res = wcsdup(bestFit);
 	SCardFreeMemory(hContext, mszCards);
 	return res;
+}
+
+
+/**
+ * Retrieves the cryptographic service provider (CSP) name from the given smart card name.
+ *
+ * @param[in] cardName - smart card name
+ * @return cryptographic service provider name or `NULL` on allocation error
+ * @remarks Use `free()` on the result.
+ */
+wchar_t * getCspFromCardNameW(const wchar_t * cardName) {
+	if (cardName == NULL) {
+		return NULL;
+	}
+	wchar_t * res = PROVIDER_NAME; /* fallback to default if not found in registry */
+	HKEY hKey = NULL;
+	wchar_t path[MAX_REG_KEY_NAME + 1];
+	wchar_t cspName[257];
+	DWORD cspLen = (DWORD)(sizeof(cspName) - sizeof(wchar_t));
+	snwprintf(path, ARRAY_SIZE(path), L"SOFTWARE\\Microsoft\\Cryptography\\Calais\\SmartCards\\%s", cardName);
+	if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, path, 0, KEY_READ, &hKey) != ERROR_SUCCESS) {
+		goto onError;
+	}
+	DWORD type;
+	if (RegQueryValueExW(hKey, L"Crypto Provider", NULL, &type, (LPBYTE)cspName, &cspLen) != ERROR_SUCCESS || type != REG_SZ) {
+		goto onError;
+	}
+	/* found valid CSP -> return it */
+	cspName[cspLen / sizeof(wchar_t)] = 0;
+	res = cspName;
+onError:
+	regCloseKeyPtr(&hKey);
+	return wcsdup(res);
 }
 
 
@@ -221,11 +256,18 @@ tVector * configsGet(void) {
 					SCardDisconnect(hCard, SCARD_LEAVE_CARD);
 					continue;
 				}
-				/* get the certificate service provider */
+				c.certProv = getCspFromCardNameW(c.cardName);
+				if (c.certProv == NULL) {
+					lastErr = ERR_OUT_OF_MEMORY;
+					wStrDelete(&(c.cardName));
+					SCardDisconnect(hCard, SCARD_LEAVE_CARD);
+					continue;
+				}
+				/* get the cryptographic service provider */
 				wchar_t path[MAX_CONFIG_STR_LEN + 6];
 				snwprintf(path, ARRAY_SIZE(path), L"\\\\.\\%s\\", readerStr);
 				HCRYPTPROV hProv;
-				if ( CryptAcquireContextW(&hProv, path, PROVIDER_NAME, PROV_TYPE, 0) ) {
+				if ( CryptAcquireContextW(&hProv, path, c.certProv, PROV_TYPE, CRYPT_SILENT | CRYPT_VERIFYCONTEXT) ) {
 					/* for each container */
 					CHAR containerName[MAX_CONFIG_STR_LEN];
 					DWORD cnLen = MAX_CONFIG_STR_LEN;
@@ -249,6 +291,7 @@ tVector * configsGet(void) {
 					}
 					CryptReleaseContext(hProv, 0);
 				}
+				wStrDelete(&(c.certProv));
 				wStrDelete(&(c.cardName));
 			}
 			SCardDisconnect(hCard, SCARD_LEAVE_CARD);
@@ -309,6 +352,7 @@ int configPrint(const size_t index, tConfig * data, tUStrBuf * sb) {
 	usb_add(sb, L"]\r\n");
 	usb_addFmt(sb, L"# Name: %s\r\n", data->certName);
 	usb_addFmt(sb, L"# Subject: %s\r\n", data->certSubj);
+	usb_addFmt(sb, L"# CSP: %s\r\n", data->certProv);
 	usb_addFmt(sb, L"certId = \"%s\"\r\n", data->certId);
 	usb_addFmt(sb, L"cardName = \"%s\"\r\n", data->cardName);
 	usb_addFmt(sb, L"cardReader = \"%s\"\r\n", data->cardReader);
@@ -335,6 +379,7 @@ int configDelete(const size_t index, tConfig * data, void * param) {
 	if (data == NULL) {
 		return 0;
 	}
+	wStrDelete(&(data->certProv));
 	wStrDelete(&(data->certId));
 	wStrDelete(&(data->certName));
 	wStrDelete(&(data->certSubj));
@@ -357,7 +402,7 @@ void configsDelete(tVector * v) {
 
 /**
  * Updates the configuration window controls after a change in the window size.
- * 
+ *
  * @param[in] ctx - configuration window context
  */
 void configsWndResize(const tConfigWndCtx * ctx) {
@@ -376,7 +421,7 @@ void configsWndResize(const tConfigWndCtx * ctx) {
 
 /**
  * Sub class for the `WC_EDITW` control to enable insertion via tab.
- * 
+ *
  * @param[in] hWnd - window handle
  * @param[in] msg - event message
  * @param[in] wParam - associated wParam

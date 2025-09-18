@@ -71,7 +71,7 @@ bool regIsValidVerb(const wchar_t * str) {
 
 /**
  * Closes the given registry key and resets the variable to `NULL`.
- * 
+ *
  * @param[in,out] hKey - pointer to registry key
  */
 void regCloseKeyPtr(HKEY * hKey) {

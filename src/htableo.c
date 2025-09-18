@@ -252,7 +252,7 @@ void hto_delete(tHTableO * ht) {
 
 /**
  * Returns the key pointer from the key value pointer.
- * 
+ *
  * @param[in] key - a key value pointer
  * @return key pointer
  */

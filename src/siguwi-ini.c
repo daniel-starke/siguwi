@@ -2,7 +2,7 @@
  * @file siguwi-ini.c
  * @author Daniel Starke
  * @date 2025-07-04
- * @version 2025-09-13
+ * @version 2025-09-17
  */
 #include "siguwi.h"
 
@@ -114,7 +114,12 @@ bool iniConfigParse(const wchar_t * file, const wchar_t * section, tIniConfig * 
 	AllocConsole();
 	freopen("CONOUT$", "w", stdout);
 #endif /* DEBUG_INI */
-	for (wchar_t * ptr = content; ptr != ptrEnd; ++ptr) {
+	/* skip BOM */
+	wchar_t * ptr = content;
+	if (len >= 1 && *ptr == 0xFEFF) {
+		++ptr;
+	}
+	for (; ptr != ptrEnd; ++ptr) {
 		const wint_t ch = *ptr;
 #ifdef DEBUG_INI
 		static const wchar_t * const st[] = {L"ST_IDLE", L"ST_COMMENT", L"ST_GROUP_START", L"ST_GROUP", L"ST_GROUP_END", L"ST_KEY", L"ST_ASSIGN", L"ST_VALUE_START", L"ST_VALUE", L"ST_VALUE_END"};
@@ -317,7 +322,7 @@ onError:
 
 /**
  * Retrieves the current smart card status.
- * 
+ *
  * @param[in] c - INI configuration base
  * @param[out] cardStatus - set to the card status on success
  * @return `true` on success, else `false`
@@ -359,17 +364,18 @@ onError:
 
 /**
  * Validates the given pin.
- * 
+ *
+ * @param[in] certProv - related cryptographic service provider (CSP) name
  * @param[in] certId - related certificate ID
  * @param[in] pin - wide-character pin to validate
  * @param[in] len - pin length in number of characters
  * @return `true` if  the pin is valid, else `false`
  */
-bool iniConfigValidatePin(const wchar_t * certId, const wchar_t * pin, DWORD len) {
+bool iniConfigValidatePin(const wchar_t * certProv, const wchar_t * certId, const wchar_t * pin, DWORD len) {
 	bool res = false;
 	HCRYPTPROV hProv = 0;
 	BYTE bPin[257];
-	if ( ! CryptAcquireContextW(&hProv, certId, PROVIDER_NAME, PROV_RSA_FULL, 0) ) {
+	if ( ! CryptAcquireContextW(&hProv, certId, certProv, PROV_TYPE, CRYPT_SILENT) ) {
 		goto onError;
 	}
 	ZeroMemory(bPin, sizeof(bPin));
@@ -391,7 +397,7 @@ onError:
 
 /**
  * Returns the pin for the given `tIniConfigBase` value.
- * 
+ *
  * @param[in] c - pointer to the `tIniConfigBase` value
  * @param[in] parent - parent window or `NULL`
  * @param[out] pin - filled with the encrypted pin on success
@@ -399,7 +405,7 @@ onError:
  */
 bool iniConfigGetPin(const tIniConfigBase * c, HWND parent, DATA_BLOB * pin) {
 	bool res = false;
-	if (c->cardName == NULL || c->cardReader == NULL || c->certId == NULL || pin == NULL) {
+	if (c->cardName == NULL || c->cardReader == NULL || c->certId == NULL || c->certProv == NULL || pin == NULL) {
 		return res;
 	}
 	ZeroMemory(pin, sizeof(*pin));
@@ -414,7 +420,7 @@ bool iniConfigGetPin(const tIniConfigBase * c, HWND parent, DATA_BLOB * pin) {
 	const size_t cardNameLen = wcslen(c->cardName) + 1;
 	const size_t cardReaderLen = wcslen(c->cardReader) + 1;
 	const size_t certIdLen = wcslen(c->certId) + 1;
-	const size_t cspNameLen = wcslen(PROVIDER_NAME) + 1;
+	const size_t cspNameLen = wcslen(c->certProv) + 1;
 	/* size of KERB_CERTIFICATE_LOGON, KERB_SMARTCARD_CSP_INFO and wchar_t are a multiple of 2 on 32 and 64 bit system -> no need for alignment */
 	const size_t certLogonSize = sizeof(KERB_CERTIFICATE_LOGON);
 	const size_t cspInfoSize = sizeof(KERB_SMARTCARD_CSP_INFO) + ((cardNameLen + cardReaderLen + certIdLen + cspNameLen) * sizeof(wchar_t));
@@ -444,7 +450,7 @@ bool iniConfigGetPin(const tIniConfigBase * c, HWND parent, DATA_BLOB * pin) {
 	offset += certIdLen;
 	/* CSP name */
 	pCspData->nCSPNameOffset = (ULONG)offset;
-	memcpy(pBuffer + offset, PROVIDER_NAME, cspNameLen * sizeof(wchar_t));
+	memcpy(pBuffer + offset, c->certProv, cspNameLen * sizeof(wchar_t));
 	offset += cspNameLen;
 	/* reader name */
 	pCspData->nReaderNameOffset = (ULONG)offset;
@@ -458,47 +464,61 @@ bool iniConfigGetPin(const tIniConfigBase * c, HWND parent, DATA_BLOB * pin) {
 	credUI.pszCaptionText = L"Code Sign";
 	credUI.pszMessageText = &(pCspData->bBuffer) + pCspData->nCardNameOffset;
 	credUI.hbmBanner = NULL;
-	ULONG authPackage = 0;
 	const LPCVOID inAuthBuffer = pCertLogon;
 	const ULONG inAuthBufferSize = (ULONG)certLogonBufferSize;
-	LPVOID outCredBuffer = NULL;
-	ULONG outCredBufferSize = 0;
-	BOOL fSave = FALSE;
 	const DWORD dwFlags = CREDUIWIN_IN_CRED_ONLY;
-	if (CredUIPromptForWindowsCredentials(
-		&credUI,
-		0,
-		&authPackage,
-		inAuthBuffer,
-		inAuthBufferSize,
-		&outCredBuffer,
-		&outCredBufferSize,
-		&fSave,
-		dwFlags
-	) != ERROR_SUCCESS) {
-		goto onError;
-	}
-	res = true;
-	/* unpack PIN */
-	ZeroMemory(userName, sizeof(userName));
-	ZeroMemory(domainName, sizeof(domainName));
-	ZeroMemory(rawPin, sizeof(rawPin));
-	if ( ! CredUnPackAuthenticationBuffer(
-		CRED_PACK_PROTECTED_CREDENTIALS,
-		outCredBuffer,
-		outCredBufferSize,
-		userName,
-		&userNameLen,
-		domainName,
-		&domainNameLen,
-		rawPin,
-		&rawPinLen
-	) ) {
-		goto onError;
-	}
-	if ( ! iniConfigValidatePin(c->certId, rawPin, rawPinLen) ) {
-		goto onError;
-	}
+	LPVOID outCredBuffer = NULL;
+	DWORD dwAuthError = 0;
+	bool firstUi = true;
+	/* request PIN until valid or aborted */
+	do {
+		if ( firstUi ) {
+			firstUi = false;
+		} else {
+			dwAuthError = GetLastError();
+		}
+		ULONG authPackage = 0;
+		ULONG outCredBufferSize = 0;
+		BOOL fSave = FALSE;
+		if (CredUIPromptForWindowsCredentials(
+			&credUI,
+			dwAuthError,
+			&authPackage,
+			inAuthBuffer,
+			inAuthBufferSize,
+			&outCredBuffer,
+			&outCredBufferSize,
+			&fSave,
+			dwFlags
+		) != ERROR_SUCCESS) {
+			goto onError;
+		}
+		res = true;
+		/* unpack PIN */
+		ZeroMemory(userName, sizeof(userName));
+		ZeroMemory(domainName, sizeof(domainName));
+		ZeroMemory(rawPin, sizeof(rawPin));
+		userNameLen = 256;
+		domainNameLen = 256;
+		rawPinLen = 256;
+		if ( ! CredUnPackAuthenticationBuffer(
+			CRED_PACK_PROTECTED_CREDENTIALS,
+			outCredBuffer,
+			outCredBufferSize,
+			userName,
+			&userNameLen,
+			domainName,
+			&domainNameLen,
+			rawPin,
+			&rawPinLen
+		) ) {
+			goto onError;
+		}
+		if (outCredBuffer != NULL) {
+			CoTaskMemFree(outCredBuffer);
+			outCredBuffer = NULL;
+		}
+	} while ( ! iniConfigValidatePin(c->certProv, c->certId, rawPin, rawPinLen) );
 	DATA_BLOB pinBlob;
 	pinBlob.pbData = (BYTE *)rawPin;
 	pinBlob.cbData = rawPinLen * 2; /* including null-termination character */
@@ -521,7 +541,7 @@ onError:
 
 /**
  * Create the given INI base configuration.
- * 
+ *
  * @param[in] c - input configuration
  * @return created configuration or `NULL` on error
  */
@@ -534,10 +554,12 @@ tRcIniConfigBase * rcIniConfigBaseCreate(const tIniConfigBase * c) {
 		return NULL;
 	}
 	res->refCount = 1;
+	res->cert->certProv = wcsdup(c->certProv);
 	res->cert->certId = wcsdup(c->certId);
 	res->cert->cardName = wcsdup(c->cardName);
 	res->cert->cardReader = wcsdup(c->cardReader);
-	if (res->cert->certId == NULL || res->cert->cardName == NULL || res->cert->cardReader == NULL) {
+	if (res->cert->certProv == NULL || res->cert->certId == NULL || res->cert->cardName == NULL || res->cert->cardReader == NULL) {
+		wStrDelete(&(res->cert->certProv));
 		wStrDelete(&(res->cert->certId));
 		wStrDelete(&(res->cert->cardName));
 		wStrDelete(&(res->cert->cardReader));
@@ -550,7 +572,7 @@ tRcIniConfigBase * rcIniConfigBaseCreate(const tIniConfigBase * c) {
 
 /**
  * Clones the given INI base configuration.
- * 
+ *
  * @param[in] c - configuration to clone
  * @return cloned configuration or `NULL` on error
  */
@@ -565,7 +587,7 @@ tRcIniConfigBase * rcIniConfigBaseClone(tRcIniConfigBase * c) {
 
 /**
  * Compares two `tRcIniConfigBase` values. This is compatible with `HashFunctionCmpO`.
- * 
+ *
  * @param[in] lhs - pointer to the left-hand sided `tRcIniConfigBase` value
  * @param[in] rhs - pointer to the right-hand sided `tRcIniConfigBase` value
  * @return 0 if equal, not 0 in every other case
@@ -584,7 +606,7 @@ inline int rcIniConfigBaseCmp(const tRcIniConfigBase * lhs, const tRcIniConfigBa
 	_CMP_PTR(lhs->cert->cardName, rhs->cert->cardName, wcscmp)
 	_CMP_PTR(lhs->cert->cardReader, rhs->cert->cardReader, wcscmp)
 	return 0;
-	
+
 }
 #undef _CMP_IGN
 #undef _CMP_PTR
@@ -592,7 +614,7 @@ inline int rcIniConfigBaseCmp(const tRcIniConfigBase * lhs, const tRcIniConfigBa
 
 /**
  * Hashes the given `tRcIniConfigBase` value. This is compatible with `HashFunctionHashO`.
- * 
+ *
  * @param[in] key - pointer to the `tRcIniConfig` value
  * @param[in] limit - size of hash table
  * @return hash value x with 0 <= x < limit
@@ -624,6 +646,7 @@ void rcIniConfigBaseDelete(tRcIniConfigBase * c) {
 		return;
 	}
 	if (InterlockedDecrement(&(c->refCount)) == 0) {
+		wStrDelete(&(c->cert->certProv));
 		wStrDelete(&(c->cert->certId));
 		wStrDelete(&(c->cert->cardName));
 		wStrDelete(&(c->cert->cardReader));

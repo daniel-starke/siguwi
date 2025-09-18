@@ -2,14 +2,14 @@
  * @file siguwi-process.c
  * @author Daniel Starke
  * @date 2025-06-25
- * @version 2025-09-13
+ * @version 2025-09-18
  */
 #include "siguwi.h"
 
 
 /**
  * Deletes the given pin data blob memory.
- * 
+ *
  * @param[in] key - pointer to the `tRcIniConfigBase` value (unused)
  * @param[in] data - pin data blob
  * @param[in] param - user parameter (unused)
@@ -60,7 +60,7 @@ int procCtxDelete(const size_t index, tProcCtx * data, void * param) {
 
 /**
  * Sends the signing request to an connected IPC server via named pipe.
- * 
+ *
  * @param[in] hPipe - piper handle
  * @param[in] c - INI configuration
  * @param[in] argc - number of files to sign
@@ -99,7 +99,7 @@ bool ipcSendReqToServer(HANDLE hPipe, const tIniConfig * c, int argc, wchar_t **
 
 /**
  * Starts an asynchronous listening for new clients on the open named pipe.
- * 
+ *
  * @param[in,out] ctx - IPC context
  * @return `true` on success, else `false`
  * @remarks Shows an message box on error.
@@ -111,6 +111,7 @@ bool ipcListen(tIpcWndCtx * ctx) {
 	/* reset context */
 	ctx->bufLen = 0;
 	ctx->state = IST_CERT_ID;
+	wStrDelete(&(ctx->cfg.cert->certProv));
 	wStrDelete(&(ctx->cfg.cert->certId));
 	wStrDelete(&(ctx->cfg.cert->cardName));
 	wStrDelete(&(ctx->cfg.cert->cardReader));
@@ -134,7 +135,7 @@ bool ipcListen(tIpcWndCtx * ctx) {
 /**
  * Checks whether the connected peer of the given named pipe has the same image
  * path as this application.
- * 
+ *
  * @param[in] hPipe - named pipe handle
  * @return `true` if same image path, else `false`
  */
@@ -164,7 +165,7 @@ onError:
 
 /**
  * Starts an asynchronous read operation on the open named pipe.
- * 
+ *
  * @param[in,out] ctx - IPC context
  * @return `true` on success, else `false`
  * @remarks Shows an message box on error.
@@ -188,7 +189,7 @@ bool ipcReadAsync(tIpcWndCtx * ctx) {
 
 /**
  * Handles the read complete event from IPC client connection.
- * 
+ *
  * @param[in] dwErrorCode - I/O completion status
  * @param[in] dwNumberOfBytesTransfered - number of bytes transferred or zero on error
  * @param[in] lpOverlapped - pointer to the OVERLAPPED structure specified by the asynchronous I/O function
@@ -228,9 +229,10 @@ void CALLBACK ipcHandleReadComplete(DWORD dwErrorCode, DWORD dwNumberOfBytesTran
 				break;
 			case IST_SIGN_APP:
 				ctx->state = IST_FILE;
+				ctx->cfg.cert->certProv = getCspFromCardNameW(ctx->cfg.cert->cardName);
 				ctx->cfgBase = rcIniConfigBaseCreate(ctx->cfg.cert);
 				ctx->cfg.signApp = rws_create(start);
-				if (ctx->cfgBase == NULL || ctx->cfg.signApp == NULL) {
+				if (ctx->cfg.cert->certProv == NULL || ctx->cfgBase == NULL || ctx->cfg.signApp == NULL) {
 					MessageBoxW(NULL, errStr[ERR_OUT_OF_MEMORY], L"Error (ipcHandleReadComplete)", MB_OK | MB_ICONERROR);
 					goto onError;
 				}
@@ -288,7 +290,7 @@ onError:
 
 /**
  * Starts processing the currently selected item.
- * 
+ *
  * @param[in,out] ctx - process context
  * @return `true` if started successfully, else `false`
  */
@@ -523,7 +525,7 @@ onEarlyError:
 
 /**
  * Select next item in queue and start processing it.
- * 
+ *
  * @param[in,out] ctx - process context
  * @return `true` if started successfully, else `false`
  */
@@ -552,7 +554,7 @@ bool processNext(tIpcWndCtx * ctx) {
 
 /**
  * Starts an asynchronous read operation on the open named pipe from the started process.
- * 
+ *
  * @param[in,out] ctx - process context
  * @return `true` on success, else `false`
  */
@@ -570,7 +572,7 @@ bool processReadAsync(tIpcWndCtx * ctx) {
 
 /**
  * Handles the read complete event from process output pipe.
- * 
+ *
  * @param[in] dwErrorCode - I/O completion status
  * @param[in] dwNumberOfBytesTransfered - number of bytes transferred or zero on error
  * @param[in] lpOverlapped - pointer to the OVERLAPPED structure specified by the asynchronous I/O function
@@ -642,7 +644,7 @@ onError:
 
 /**
  * Waits for the child process termination and updates the process item status.
- * 
+ *
  * @param[in,out] ctx - process context
  * @return `true` on success, else `false`
  */
@@ -680,8 +682,8 @@ onError:
 /**
  * Adds a single file with the given configuration to the internal process list
  * to process it.
- * 
- * @param[in] ctx - Window/IPC context
+ *
+ * @param[in,out] ctx - Window/IPC context
  * @param[in] c - INI configuration base
  * @param[in] signApp - code signing application command-line
  * @param[in] path - path to the file to add (can be relative)
@@ -693,6 +695,10 @@ bool processAddFile(tIpcWndCtx * ctx, tRcIniConfigBase * c, tRcWStr * signApp, c
 		return false;
 	}
 	tProcCtx * item = vec_pushBack(ctx->v);
+	if (ctx->proc != NULL) {
+		/* pointer may have been invalidated -> update it */
+		ctx->proc = vec_at(ctx->v, ctx->vi);
+	}
 	if (item == NULL) {
 		showFmtMsg(ctx->hWnd, MB_OK | MB_ICONERROR, L"Error (processAddFile)", L"%s", errStr[ERR_OUT_OF_MEMORY]);
 		return false;
@@ -721,7 +727,7 @@ bool processAddFile(tIpcWndCtx * ctx, tRcIniConfigBase * c, tRcWStr * signApp, c
 
 /**
  * Adds a new item to the process list widget.
- * 
+ *
  * @param[in] ctx - Window/IPC context
  * @param[in] item - item to add
  * @return `true` on success, else `false`
@@ -754,9 +760,37 @@ bool processAddItem(const tIpcWndCtx * ctx, const tProcCtx * item) {
 
 
 /**
+ * Adds the given file that was dragged to the process window to the process list.
+ *
+ * @param[in,out] ctx - Window/IPC context
+ * @param[in] hDrop - drag&drop handle
+ * @param[in] i - file index
+ * @param[in] buf - pre-allocated buffer
+ * @param[in] len - pre-allocated buffer size in number of characters
+ */
+void processDragFile(tIpcWndCtx * ctx, HDROP hDrop, UINT i, wchar_t * buf, size_t len) {
+	if (ctx == NULL || hDrop == NULL || buf == NULL) {
+		return;
+	}
+	const UINT n = DragQueryFileW(hDrop, i, NULL, 0);
+	wchar_t * ptr = ((size_t)n < len) ? buf : malloc((size_t)(n + 1) * sizeof(wchar_t));
+	if (ptr == NULL) {
+		return;
+	}
+	if (DragQueryFileW(hDrop, i, ptr, n + 1) == n) {
+		ptr[n] = 0;
+		processAddFile(ctx, ctx->cmdlCfg, ctx->cmdlSignApp, ptr);
+	}
+	if (ptr != buf) {
+		free(ptr);
+	}
+}
+
+
+/**
  * Updates the result column in the process list widget for the item with the
  * given index.
- * 
+ *
  * @param[in] ctx - Window/IPC context
  * @param[in] i - item index
  * @return `true` on success, else `false`
@@ -798,7 +832,7 @@ bool processUpdateItem(const tIpcWndCtx * ctx, const size_t i) {
 
 /**
  * Updates the process window controls after a change in the window size.
- * 
+ *
  * @param[in] ctx - Window/IPC context
  */
 void processWndResize(const tIpcWndCtx * ctx) {
@@ -869,7 +903,7 @@ LRESULT CALLBACK processSepWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 
 /**
  * Sub class for the `WC_EDITW` control to enable tab navigation.
- * 
+ *
  * @param[in] hWnd - window handle
  * @param[in] msg - event message
  * @param[in] wParam - associated wParam
@@ -950,6 +984,7 @@ LRESULT CALLBACK processWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 		SetWindowLongPtr(ctx->hSep, GWLP_USERDATA, (LONG_PTR)ctx);
 		SetWindowLongPtr(ctx->hSep, GWLP_WNDPROC, (LONG_PTR)processSepWndProc);
 		processWndResize(ctx);
+		DragAcceptFiles(hWnd, TRUE);
 		} break;
 	case WM_NOTIFY: {
 		const NMHDR * nmhdr = (const NMHDR *)lParam;
@@ -963,6 +998,17 @@ LRESULT CALLBACK processWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 					SetWindowTextW(ctx->hInfo, L"");
 				}
 			}
+		}
+		} break;
+	case WM_DROPFILES: {
+		const HDROP hDrop = (HDROP)wParam;
+		if (hDrop != NULL) {
+			const UINT count = DragQueryFile(hDrop, 0xFFFFFFFF, NULL, 0);
+			wchar_t buf[MAX_PATH + 1];
+			for (UINT i = 0; i < count; ++i) {
+				processDragFile(ctx, hDrop, i, buf, ARRAY_SIZE(buf));
+			}
+			DragFinish(hDrop);
 		}
 		} break;
 	case WM_GETMINMAXINFO: {
@@ -991,7 +1037,7 @@ LRESULT CALLBACK processWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 
 /**
  * Shows the process window or transmits the request to an existing one.
- * 
+ *
  * @param[in] c - INI configuration
  * @param[in] cmdshow - `ShowWindow` parameter
  * @param[in] argc - number of files to sign
@@ -1092,20 +1138,21 @@ int showProcess(const tIniConfig * c, int cmdshow, int argc, wchar_t ** argv) {
 	/* initialize common controls */
 	INITCOMMONCONTROLSEX icex = {sizeof(icex), ICC_LISTVIEW_CLASSES};
     InitCommonControlsEx(&icex);
+	/* create configuration environment */
+	ctx.cmdlCfg = rcIniConfigBaseCreate(c->cert);
+	ctx.cmdlSignApp = rws_aquire(c->signApp);
+	if (ctx.cmdlCfg == NULL) {
+		MessageBoxW(NULL, errStr[ERR_OUT_OF_MEMORY], L"Error (showProcess)", MB_OK | MB_ICONERROR);
+		goto onError;
+	}
 	/* create and show window */
 	HWND hWnd = CreateWindowW(wc.lpszClassName, L"Signing process", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 640, 480, NULL, NULL, gInst, (LPVOID)&ctx);
 	ShowWindow(hWnd, cmdshow);
 	UpdateWindow(hWnd);
 	if (argc > 0) {
-		/* create configuration environment */
-		ctx.cfgBase = rcIniConfigBaseCreate(c->cert);
-		if (ctx.cfgBase == NULL) {
-			MessageBoxW(NULL, errStr[ERR_OUT_OF_MEMORY], L"Error (showProcess)", MB_OK | MB_ICONERROR);
-			goto onError;
-		}
 		/* add files to process list */
 		for (int i = 0; i < argc; ++i) {
-			if ( ! processAddFile(&ctx, ctx.cfgBase, c->signApp, argv[i]) ) {
+			if ( ! processAddFile(&ctx, ctx.cmdlCfg, ctx.cmdlSignApp, argv[i]) ) {
 				goto onError;
 			}
 		}
@@ -1163,11 +1210,14 @@ onError:
 	}
 	closeHandlePtr(&(ctx.ovClient.hEvent), NULL);
 	closeHandlePtr(&(ctx.hPipe), INVALID_HANDLE_VALUE);
+	wStrDelete(&(ctx.cfg.cert->certProv));
 	wStrDelete(&(ctx.cfg.cert->certId));
 	wStrDelete(&(ctx.cfg.cert->cardName));
 	wStrDelete(&(ctx.cfg.cert->cardReader));
 	rws_release(&(ctx.cfg.signApp));
 	rcIniConfigBaseDelete(ctx.cfgBase);
+	rcIniConfigBaseDelete(ctx.cmdlCfg);
+	rws_release(&(ctx.cmdlSignApp));
 	if (ctx.h != NULL) {
 		hto_traverse(ctx.h, (HashVisitorO)pinBlobDelete, NULL);
 		hto_delete(ctx.h);

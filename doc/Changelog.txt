@@ -1,0 +1,21 @@
+version numbering schema:
+M.N.P
+| | +-- patch: increased if only bug fixed were incorporated
+| +---- minor: increased if syntax/semantic breaking changes were applied
++------ major: increased if elementary changes (from user's point of view) were made
+
+1.1.0 (2025-09-18)
+ - added: drag&drop support to process window based on configuration file from command-line
+ - changed: output deduces CSP name in INI output of the configuration window
+ - changed: request PIN until valid or aborted by user
+ - changed: make file parameter handling to make its meaning more clear
+ - fixed: limit user interactions on WinCrypt API usage where applicable
+ - fixed: limit requested access rights on WinCrypt API usage where applicable
+ - fixed: deduce cryptographic service provider (CSP) name dynamically from smart card name
+ - fixed: manifest resource ID in resource file
+ - fixed: missing BOM handling in INI file parser
+ - fixed: error message offset being one off due to missing error string mapping table update
+ - fixed: possibly dangled pointer when adding items to the process item vector
+
+1.0.0 (2025-09-13)
+ - first release
