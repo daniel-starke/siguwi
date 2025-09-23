@@ -2,7 +2,7 @@
  * @file siguwi-config.c
  * @author Daniel Starke
  * @date 2025-06-25
- * @version 2025-09-17
+ * @version 2025-09-23
  */
 #include "siguwi.h"
 
@@ -411,9 +411,9 @@ void configsWndResize(const tConfigWndCtx * ctx) {
 	const int width = rect.right;
 	const int height = rect.bottom;
 	HDWP hDwp = BeginDeferWindowPos(3);
-	hDwp = DeferWindowPos(hDwp, ctx->hCombo, NULL, 10, 10, width - 20, 300, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOREDRAW);
-	hDwp = DeferWindowPos(hDwp, ctx->hEdit, NULL, 10, 45, width - 20, height - 90, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOREDRAW);
-	hDwp = DeferWindowPos(hDwp, ctx->hButton, NULL, width - 100, height - 35, 90, 25, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOREDRAW);
+	hDwp = DeferWindowPos(hDwp, ctx->hCombo, NULL, calcPixels(10), calcPixels(10), width - calcPixels(20), calcPixels(300), SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOREDRAW);
+	hDwp = DeferWindowPos(hDwp, ctx->hEdit, NULL, calcPixels(10), calcPixels(45), width - calcPixels(20), height - calcPixels(90), SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOREDRAW);
+	hDwp = DeferWindowPos(hDwp, ctx->hButton, NULL, width - calcPixels(100), height - calcPixels(35), calcPixels(90), calcPixels(25), SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOREDRAW);
 	EndDeferWindowPos(hDwp);
 	InvalidateRect(ctx->hWnd, NULL, FALSE);
 }
@@ -480,8 +480,8 @@ LRESULT CALLBACK configsWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 		} break;
 	case WM_GETMINMAXINFO: {
 		MINMAXINFO * pmmi = (MINMAXINFO *)lParam;
-		pmmi->ptMinTrackSize.x = 500;
-		pmmi->ptMinTrackSize.y = 300;
+		pmmi->ptMinTrackSize.x = calcPixels(500);
+		pmmi->ptMinTrackSize.y = calcPixels(300);
 		} return 0;
 	case WM_SIZE:
 		configsWndResize(ctx);
@@ -583,11 +583,10 @@ LRESULT CALLBACK configsWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
  */
 int showConfigs(int cmdshow) {
 	tConfigWndCtx ctx;
-	const int dpi = getDpi();
 	int res = EXIT_FAILURE;
 	ZeroMemory(&ctx, sizeof(ctx));
 	/* load default window font */
-	ctx.hFont = CreateFontW(calcFontSize(85, dpi), 0, 0, 0, 0, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"MS Shell Dlg");
+	ctx.hFont = CreateFontW(calcFontSize(85), 0, 0, 0, 0, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"MS Shell Dlg");
 	if (ctx.hFont == NULL) {
 		MessageBoxW(NULL, errStr[ERR_CREATEFONT], L"Error (list)", MB_OK | MB_ICONERROR);
 		goto onError;
@@ -621,7 +620,7 @@ int showConfigs(int cmdshow) {
 	};
 	RegisterClassExW(&wc);
 	/* create and show window */
-	HWND hWnd = CreateWindowW(wc.lpszClassName, L"Configurations", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 640, 350, NULL, NULL, gInst, (LPVOID)&ctx);
+	HWND hWnd = CreateWindowW(wc.lpszClassName, L"Configurations", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, calcPixels(640), calcPixels(350), NULL, NULL, gInst, (LPVOID)&ctx);
 	ShowWindow(hWnd, cmdshow);
 	UpdateWindow(hWnd);
 	MSG msg;

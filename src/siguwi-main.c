@@ -2,7 +2,7 @@
  * @file siguwi-main.c
  * @author Daniel Starke
  * @date 2025-06-14
- * @version 2025-09-17
+ * @version 2025-09-23
  */
 #include "siguwi.h"
 
@@ -133,6 +133,7 @@ const uint32_t crc32Table[] = {
  * @return exit code
  */
 int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE hInstPrev, LPWSTR cmdline, int cmdshow) {
+	SetProcessDPIAware();
 	PCF_UNUSED(hInstPrev);
 	PCF_UNUSED(cmdline);
 	wchar_t ** argv, ** enpv, * configUrl, * oldConfigUrl, * regEntry;
@@ -640,10 +641,39 @@ int cmpToken(const tToken * const token, const wchar_t * str) {
  * @return screen DPI
  */
 int getDpi(void) {
-	HDC hDc = GetDC(NULL);
-	const int dpi = GetDeviceCaps(hDc, LOGPIXELSY);
-	ReleaseDC(NULL, hDc);
-	return dpi;
+	static bool hasDpi = false;
+	static int cachedDpi = 96;
+	if ( ! hasDpi ) {
+		hasDpi = true;
+		HDC hDc = GetDC(NULL);
+		cachedDpi = GetDeviceCaps(hDc, LOGPIXELSY);
+		ReleaseDC(NULL, hDc);
+	}
+	return cachedDpi;
+}
+
+
+/**
+ * Calculates the pixels for the given 96 DPI pixel equivalent using the
+ * current DPI settings.
+ *
+ * @param[in] px - 96 DPI pixels
+ * @return current DPI equivalent
+ */
+int calcPixels(const int px) {
+	return MulDiv(px, getDpi(), 96);
+}
+
+
+/**
+ * Calculates the pixels for the given 96 DPI pixel equivalent using the
+ * current DPI settings.
+ *
+ * @param[in] px - 96 DPI pixels
+ * @return current DPI equivalent
+ */
+float calcPixelsF(const float px) {
+	return (px * (float)getDpi()) / 96.0f;
 }
 
 
@@ -651,11 +681,10 @@ int getDpi(void) {
  * Calculates the font size for the given target font size in pixels.
  *
  * @param[in] px - target font size in pixel * 10
- * @param[in] dpi - dots per inch of the target surface
  * @return font size
  */
-int calcFontSize(const int px, const int dpi) {
-	return -MulDiv(px, dpi, 720);
+int calcFontSize(const int px) {
+	return -MulDiv(px, getDpi(), 720);
 }
 
 

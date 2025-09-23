@@ -1,9 +1,9 @@
 APPS = siguwi
 COMMA = ,
 
-siguwi_version = 1.1.0
+siguwi_version = 1.2.0
 siguwi_version_nums = $(subst .,$(COMMA),$(siguwi_version)),0
-siguwi_version_date = 2025-09-18
+siguwi_version_date = 2025-09-23
 siguwi_author = Daniel Starke
 
 CPPMETAFLAGS = '-DSIGUWI_VERSION="$(siguwi_version) ($(siguwi_version_date))"' '-DSIGUWI_VERSION_NUMS=$(siguwi_version_nums)' '-DSIGUWI_AUTHOR="$(siguwi_author)"'

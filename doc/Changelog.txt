@@ -4,6 +4,9 @@ M.N.P
 | +---- minor: increased if syntax/semantic breaking changes were applied
 +------ major: increased if elementary changes (from user's point of view) were made
 
+1.2.0 (2025-09-23)
+ - changed: made application high DPI aware
+
 1.1.0 (2025-09-18)
  - added: drag&drop support to process window based on configuration file from command-line
  - changed: output deduces CSP name in INI output of the configuration window

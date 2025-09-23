@@ -2,7 +2,7 @@
  * @file siguwi.h
  * @author Daniel Starke
  * @date 2025-06-14
- * @version 2025-09-18
+ * @version 2025-09-23
  */
 #ifndef __SIGUWI_H__
 #define __SIGUWI_H__
@@ -411,7 +411,9 @@ int cmpToken(const tToken * const token, const wchar_t * str);
 
 /* GUI utility functions (`siguwi-main.c`) */
 int getDpi(void);
-int calcFontSize(const int px, const int dpi);
+int calcPixels(const int px);
+float calcPixelsF(const float px);
+int calcFontSize(const int px);
 void showFmtMsg(HWND parent, UINT type, const wchar_t * title, const wchar_t * fmt, ...);
 void showFmtMsgVar(HWND parent, UINT type, const wchar_t * title, const wchar_t * fmt, va_list ap);
 void closeHandlePtr(HANDLE * h, const HANDLE r);

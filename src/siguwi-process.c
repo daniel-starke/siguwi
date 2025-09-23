@@ -2,7 +2,7 @@
  * @file siguwi-process.c
  * @author Daniel Starke
  * @date 2025-06-25
- * @version 2025-09-18
+ * @version 2025-09-23
  */
 #include "siguwi.h"
 
@@ -836,7 +836,7 @@ bool processUpdateItem(const tIpcWndCtx * ctx, const size_t i) {
  * @param[in] ctx - Window/IPC context
  */
 void processWndResize(const tIpcWndCtx * ctx) {
-	const int sepHeight = SEP_WIDTH;
+	const int sepHeight = calcPixels(SEP_WIDTH);
 	const int sepHalf = sepHeight / 2;
 	RECT rect;
 	GetClientRect(ctx->hWnd, &rect);
@@ -844,9 +844,9 @@ void processWndResize(const tIpcWndCtx * ctx) {
 	const int height = rect.bottom;
 	const int sepMid = (int)lroundf((float)height * ctx->sepPos);
 	HDWP hDwp = BeginDeferWindowPos(3);
-	hDwp = DeferWindowPos(hDwp, ctx->hList, NULL, 10, 10, width - 20, sepMid - sepHalf - 10, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOREDRAW);
-	hDwp = DeferWindowPos(hDwp, ctx->hSep, NULL, 10, sepMid - sepHalf, width - 20, sepHeight, SWP_NOZORDER | SWP_NOACTIVATE);
-	hDwp = DeferWindowPos(hDwp, ctx->hInfo, NULL, 10, sepMid + sepHalf, width - 20, height - (sepMid + sepHalf + 10), SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOREDRAW);
+	hDwp = DeferWindowPos(hDwp, ctx->hList, NULL, calcPixels(10), calcPixels(10), width - calcPixels(20), sepMid - sepHalf - calcPixels(10), SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOREDRAW);
+	hDwp = DeferWindowPos(hDwp, ctx->hSep, NULL, calcPixels(10), sepMid - sepHalf, width - calcPixels(20), sepHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+	hDwp = DeferWindowPos(hDwp, ctx->hInfo, NULL, calcPixels(10), sepMid + sepHalf, width - calcPixels(20), height - (sepMid + sepHalf + calcPixels(10)), SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOREDRAW);
 	EndDeferWindowPos(hDwp);
 	InvalidateRect(ctx->hWnd, NULL, FALSE);
 }
@@ -881,8 +881,8 @@ LRESULT CALLBACK processSepWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 			RECT rect;
 			GetClientRect(ctx->hWnd, &rect);
 			/* allow at least 70px at the top and bottom */
-			const float minY = 70.f / (float)(rect.bottom);
-			const float maxY = 1.0f - (70.f / (float)(rect.bottom));
+			const float minY = calcPixelsF(70.f) / (float)(rect.bottom);
+			const float maxY = 1.0f - (calcPixelsF(70.f) / (float)(rect.bottom));
 			const float mid = (float)(pt.y) / (float)(rect.bottom);
 			ctx->sepPos = fmaxf(minY, fminf(maxY, mid));
 			processWndResize(ctx);
@@ -959,12 +959,12 @@ LRESULT CALLBACK processWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 		/* set extended list view styles */
 		SendMessageW(ctx->hList, LVM_SETEXTENDEDLISTVIEWSTYLE, 0, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
 		/* add list view columns */
-		static const struct {
+		const struct {
 			int width;
 			wchar_t * const name;
 		} columns[] = {
-			{120, L"File"},   /* PCI_FILE */
-			{100, L"Result"}, /* PCI_RESULT */
+			{calcPixels(120), L"File"},   /* PCI_FILE */
+			{calcPixels(100), L"Result"}, /* PCI_RESULT */
 			{-1,  L"Path"}    /* PCI_PATH */
 		};
 		LVCOLUMNW lvc;
@@ -976,7 +976,7 @@ LRESULT CALLBACK processWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 			lvc.pszText = columns[i].name;
 			lvc.iSubItem = (int)i;
 			if (lvc.cx == -1) {
-				lvc.cx = width - colWidth - 70;
+				lvc.cx = width - colWidth - calcPixels(70);
 			}
 			colWidth += lvc.cx;
 			ListView_InsertColumn(ctx->hList, (int)i, &lvc);
@@ -1013,8 +1013,8 @@ LRESULT CALLBACK processWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 		} break;
 	case WM_GETMINMAXINFO: {
 		MINMAXINFO * pmmi = (MINMAXINFO *)lParam;
-		pmmi->ptMinTrackSize.x = 500;
-		pmmi->ptMinTrackSize.y = 300;
+		pmmi->ptMinTrackSize.x = calcPixels(500);
+		pmmi->ptMinTrackSize.y = calcPixels(300);
 		} return 0;
 	case WM_SIZE:
 		processWndResize(ctx);
@@ -1047,7 +1047,6 @@ LRESULT CALLBACK processWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 int showProcess(const tIniConfig * c, int cmdshow, int argc, wchar_t ** argv) {
 	int res = EXIT_FAILURE;
 	bool isServer = true;
-	const int dpi = getDpi();
 	tIpcWndCtx ctx;
 	ZeroMemory(&ctx, sizeof(ctx));
 	ctx.hPipe = INVALID_HANDLE_VALUE;
@@ -1114,7 +1113,7 @@ int showProcess(const tIniConfig * c, int cmdshow, int argc, wchar_t ** argv) {
 		goto onSuccess;
 	}
 	/* load default window font */
-	ctx.hFont = CreateFontW(calcFontSize(85, dpi), 0, 0, 0, 0, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"MS Shell Dlg");
+	ctx.hFont = CreateFontW(calcFontSize(85), 0, 0, 0, 0, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"MS Shell Dlg");
 	if (ctx.hFont == NULL) {
 		MessageBoxW(NULL, errStr[ERR_CREATEFONT], L"Error (list)", MB_OK | MB_ICONERROR);
 		goto onError;
@@ -1146,7 +1145,7 @@ int showProcess(const tIniConfig * c, int cmdshow, int argc, wchar_t ** argv) {
 		goto onError;
 	}
 	/* create and show window */
-	HWND hWnd = CreateWindowW(wc.lpszClassName, L"Signing process", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 640, 480, NULL, NULL, gInst, (LPVOID)&ctx);
+	HWND hWnd = CreateWindowW(wc.lpszClassName, L"Signing process", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, calcPixels(640), calcPixels(480), NULL, NULL, gInst, (LPVOID)&ctx);
 	ShowWindow(hWnd, cmdshow);
 	UpdateWindow(hWnd);
 	if (argc > 0) {
