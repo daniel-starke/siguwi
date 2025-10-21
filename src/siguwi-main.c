@@ -2,7 +2,7 @@
  * @file siguwi-main.c
  * @author Daniel Starke
  * @date 2025-06-14
- * @version 2025-09-23
+ * @version 2025-10-21
  */
 #include "siguwi.h"
 
@@ -64,7 +64,9 @@ const wchar_t * const errStr[] = {
 	/* ERR_ASYNC_READ */       L"Failed to asynchronously read data (0x%08X).",
 	/* ERR_CREATE_EVENT */     L"Failed to create asynchronous event (0x%08X).",
 	/* ERR_GET_STD_HANDLE */   L"Failed to get standard I/O handle.",
-	/* ERR_INVALID_REG_VERB */ L"Invalid static shell context menu item verb string \"%s\" given."
+	/* ERR_INVALID_REG_VERB */ L"Invalid static shell context menu item verb string \"%s\" given.",
+	/* ERR_INIT_COM */         L"Failed to initialize COM (0x%08X).",
+	/* ERR_FILE_NOT_FOUND */   L"File not found:\n%s"
 };
 
 

@@ -2,7 +2,7 @@
  * @file siguwi-process.c
  * @author Daniel Starke
  * @date 2025-06-25
- * @version 2025-09-23
+ * @version 2025-10-21
  */
 #include "siguwi.h"
 
@@ -988,15 +988,49 @@ LRESULT CALLBACK processWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 		} break;
 	case WM_NOTIFY: {
 		const NMHDR * nmhdr = (const NMHDR *)lParam;
-		if (nmhdr->code == LVN_ITEMCHANGED && nmhdr->idFrom == IDC_PROCESS_LIST) {
-			const int selList = ListView_GetNextItem(ctx->hList, -1, LVNI_SELECTED);
-			if (selList != ctx->selList) {
-				ctx->selList = selList;
-				if (selList >= 0) {
-					processUpdateItem(ctx, (size_t)(ctx->selList));
-				} else {
-					SetWindowTextW(ctx->hInfo, L"");
+		if (nmhdr->idFrom == IDC_PROCESS_LIST) {
+			switch (nmhdr->code) {
+			case LVN_ITEMCHANGED: {
+				/* show program output */
+				const int selList = ListView_GetNextItem(ctx->hList, -1, LVNI_SELECTED);
+				if (selList != ctx->selList) {
+					ctx->selList = selList;
+					if (selList >= 0) {
+						processUpdateItem(ctx, (size_t)(ctx->selList));
+					} else {
+						SetWindowTextW(ctx->hInfo, L"");
+					}
 				}
+				} break;
+			case NM_DBLCLK: {
+				/* open explorer at file path */
+				const LPNMITEMACTIVATE item = (LPNMITEMACTIVATE)lParam;
+				if (item->iItem >= 0 && item->uKeyFlags == 0) {
+					const tProcCtx * i = vec_at(ctx->v, (size_t)(item->iItem));
+					if (i != NULL) {
+						if ( wFileExists(i->path) ) {
+							/* get parent folder PIDL and relative child PIDL from full file PIDL */
+							const PIDLIST_ABSOLUTE pidlFile = ILCreateFromPathW(i->path);
+							if ( pidlFile ) {
+								/* remove the last item in PIDL to get folder PIDL */
+								const PIDLIST_ABSOLUTE pidlFolder = ILClone(pidlFile);
+								if ( pidlFolder ) {
+									/* get child PIDL relative to folder */
+									ILRemoveLastID(pidlFolder);
+									PCUITEMID_CHILD pidlChild = ILFindLastID(pidlFile);
+									SHOpenFolderAndSelectItems(pidlFolder, 1, &pidlChild, 0);
+									ILFree(pidlFolder);
+								}
+								ILFree(pidlFile);
+							}
+						} else {
+							showFmtMsg(hWnd, MB_OK | MB_ICONERROR, L"Error (showProcess)", errStr[ERR_FILE_NOT_FOUND], i->path);
+						}
+					}
+				}
+				} break;
+			default:
+				break;
 			}
 		}
 		} break;
@@ -1051,9 +1085,16 @@ int showProcess(const tIniConfig * c, int cmdshow, int argc, wchar_t ** argv) {
 	ZeroMemory(&ctx, sizeof(ctx));
 	ctx.hPipe = INVALID_HANDLE_VALUE;
 	ctx.waitForClient = true;
+	HRESULT hRes = E_HANDLE;
 	/* input value check */
 	if (c == NULL || (argc > 0 && argv == NULL && argv[0] == NULL)) {
 		MessageBoxW(NULL, errStr[ERR_INVALID_ARG], L"Error (showProcess)", MB_OK | MB_ICONERROR);
+		goto onError;
+	}
+	/* COM initialization */
+	hRes = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+	if (hRes != S_OK) {
+		showFmtMsg(NULL, MB_OK | MB_ICONERROR, L"Error (showProcess)", errStr[ERR_INIT_COM], hRes);
 		goto onError;
 	}
 	/* processing context initialization */
@@ -1204,6 +1245,9 @@ int showProcess(const tIniConfig * c, int cmdshow, int argc, wchar_t ** argv) {
 onSuccess:
 	res = EXIT_SUCCESS;
 onError:
+	if (hRes == S_OK) {
+		CoUninitialize();
+	}
 	if (ctx.hFont != NULL) {
 		DeleteObject(ctx.hFont);
 	}

@@ -2,7 +2,7 @@
  * @file siguwi.h
  * @author Daniel Starke
  * @date 2025-06-14
- * @version 2025-09-23
+ * @version 2025-10-21
  */
 #ifndef __SIGUWI_H__
 #define __SIGUWI_H__
@@ -177,7 +177,9 @@ typedef enum {
 	ERR_ASYNC_READ,
 	ERR_CREATE_EVENT,
 	ERR_GET_STD_HANDLE,
-	ERR_INVALID_REG_VERB
+	ERR_INVALID_REG_VERB,
+	ERR_INIT_COM,
+	ERR_FILE_NOT_FOUND
 } tErrCode;
 
 
